@@ -21,26 +21,21 @@ module.exports = function (seats, lineLimit, throttle) {
           return obj.lineStarts + obj.lineLimit;
         }
         if (prop === 'monit') {
-          return {inline: obj.line.length, inhouse: obj.inhouse.length, checkout: obj.checkOutLine.length, reject: obj.failedCount, served: obj.succeedCount}
+          return { inline: obj.line.length, inhouse: obj.inhouse.length, checkout: obj.checkOutLine.length, reject: obj.failedCount, served: obj.succeedCount }
         }
         return undefined;
       }
     })
-  this.init = () => {}
+  this.init = () => { }
   this.getToken = async () => {
-    // 如果還能排隊的話 發一張卡
-    if (this.props.line.length <= this.props.lineLimit) {
-      let token = uuidv4()
-      let passport = {
-        token: token,
-        lastSeen: new Date().getTime()
-      }
-      this.props.line.push(passport)
-      return await passport
-    } else {
-      this.props.failedCount = this.props.failedCount + 1
-      throw Error('wait line is full. current waiting: ' + this.props.line.length)
+    // 直接給卡進店
+    let token = uuidv4()
+    let passport = {
+      token: token,
+      lastSeen: new Date().getTime()
     }
+    this.props.inhouse.push(passport)
+    return await passport
   }
   this.checkStatus = async (token) => {
     //已經在店內，可以結帳
