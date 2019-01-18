@@ -11,7 +11,6 @@ module.exports = function (type, users, parallel, timeGap) {
       await new Promise(resolve => setTimeout(resolve, timeGap))
       for (let par = 0; par < parallel; par++) {
         let user = new simulate()
-        console.log(i)
       }
     }
   }
@@ -67,6 +66,3 @@ module.exports = function (type, users, parallel, timeGap) {
     console.log('模擬同時 ' + parallel + ' 個平行請求，間隔 ' + timeGap + ' 毫秒，共' + users + '次')
   }
 }
-setInterval(() => {
-  // console.log(RL.props.monit)
-}, 1000);

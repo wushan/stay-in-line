@@ -43,11 +43,13 @@ module.exports = function (seats, lineLimit, throttle) {
     client.DEL('waitline')
     client.DEL('inhouse')
     client.DEL('counts')
-    setInterval(() => {
-      this.publishMessage()
-    }, 1000)
+    setTimeout(() => {
+      let startTime = new Date().getTime()
+      this.publishMessage(startTime)
+    }, 100);
   }
-  this.publishMessage = async () => {
+  this.publishMessage = async (startTime) => {
+    let currentTime = new Date().getTime()
     let waitline = await client.ZCARDAsync('waitline')
     let inhouse = await client.ZCARDAsync('inhouse')
     let fields = await client.HKEYSAsync('counts')
@@ -56,11 +58,19 @@ module.exports = function (seats, lineLimit, throttle) {
       counts = await client.HMGETAsync('counts', fields) 
     }
     let message = {
+      timepassed: (currentTime - startTime) / 1000,
       waitline: waitline,
       inhouse: inhouse,
       additional: fields.map((a, b) => { return {[a]: counts[b]}} )
     }
-    client.PUBLISH('pipe', JSON.stringify(message))
+    if (waitline > 0 || inhouse > 0) {
+      client.PUBLISH('pipe', JSON.stringify(message))
+      setTimeout(() => {
+        this.publishMessage(startTime)
+      }, 1000);
+    } else {
+      client.PUBLISH('pipe', 'pipeDone')
+    }
   }
   this.scanAsync = function (cursor, pattern, returnSet) {
     return client.scanAsync(cursor, 'MATCH', pattern, 'COUNT', 10).then((reply) => {

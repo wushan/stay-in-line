@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-tw">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Chatroom</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    var socket = io();
+  </script>
+</head>
+
+<body>
+  <div id="msg"></div>
+  <button onclick="startJob()">START JOB</button>
+  <script>
+    function startJob() {
+      socket.emit("startJob");
+    }
+    // 當觸發連線建立事件
+    // 發送 greet 事件給伺服器
+    socket.on("connect", function () {
+      console.log('socket connected.')
+    });
+    // 當收到伺服器回傳到 greet 事件
+    // 將內容轉到 div 中呈現
+    socket.on("pipeEvent", function (msg) {
+      document.getElementById("msg").innerText = msg;
+    });
+    socket.on("pipeDone", function (msg) {
+      document.getElementById("msg").innerText = 'Done';
+    });
+  </script>
+</body>
+
+</html>
