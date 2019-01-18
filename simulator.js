@@ -11,6 +11,7 @@ module.exports = function (type, users, parallel, timeGap) {
       await new Promise(resolve => setTimeout(resolve, timeGap))
       for (let par = 0; par < parallel; par++) {
         let user = new simulate()
+        console.log(i)
       }
     }
   }
@@ -29,26 +30,28 @@ module.exports = function (type, users, parallel, timeGap) {
     }
   }
   this.checkStatus = async function (passport) {
-    await RL.checkStatus(passport)
-      .then((res) => {
-        if (res === true) {
-          // 已在店內，這邊模擬一點遊戲中的固定壓力
-          let fakeUserData = faker.fake("{{lorem.paragraphs}}")
-          let eatTime = Math.floor(Math.random() * 1000)
-          console.log('進入店內等待 ' + eatTime + '秒')
-          // 0 ~ 100 秒後結帳
-          setTimeout(() => {
-            RL.checkOut(passport)
-          }, eatTime);
-        } else {
-          setTimeout(() => {
-            //詢問中也要產生壓力
-            let fakeAskPressure = faker.fake("{{lorem.word}}")
-            console.log(passport.token + ' 詢問中')
-            checkStatus(passport)
-          }, 2000)
-        }
-      })
+    await setTimeout(() => {
+      RL.checkStatus(passport)
+        .then((res) => {
+          if (res === true) {
+            // 已在店內，這邊模擬一點遊戲中的固定壓力
+            let fakeUserData = faker.fake("{{lorem.paragraphs}}")
+            let eatTime = Math.floor(Math.random() * 1000)
+            // console.log('進入店內等待 ' + eatTime + '秒')
+            // 0 ~ 100 秒後結帳
+            setTimeout(() => {
+              RL.checkOut(passport)
+            }, eatTime);
+          } else {
+            setTimeout(() => {
+              //詢問中也要產生壓力
+              let fakeAskPressure = faker.fake("{{lorem.word}}")
+              // console.log(passport.token + ' 詢問中')
+              checkStatus(passport)
+            }, 2000)
+          }
+        })
+    }, 1000)
   }
   if (type === 'default') {
     RL = new requestDefault(capacity, waitLineLimit, idle) // Capacity, WaitLineLimit, Idle

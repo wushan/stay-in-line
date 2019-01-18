@@ -2,11 +2,20 @@ const csvWriter = require('csv-write-stream')
 const fs = require('fs')
 // const memeye = require('memeye');
 const Simulator = require('./simulator')
+const redis = require("redis")
+const client = redis.createClient();
+client.on("subscribe", function (channel, count) {
+  console.log(channel, count)
+})
+client.on("message", function (channel, message) {
+  console.log("sub channel " + channel + ": " + message);
+});
+client.SUBSCRIBE('pipe')
 // memeye();
 var writer = csvWriter()
-let simulateAmount = 10000
+let simulateAmount = 100
 let simulateType = 'wait'
-let parallel = 1
+let parallel = 2
 let timeGap = 1
 Simulator(simulateType, simulateAmount, parallel, timeGap)
 

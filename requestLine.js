@@ -40,7 +40,27 @@ module.exports = function (seats, lineLimit, throttle) {
       }
     })
   this.init = () => {
-    // client.ZREMRANGEBYLEXAsync('waitline') key min max 
+    client.DEL('waitline')
+    client.DEL('inhouse')
+    client.DEL('counts')
+    setInterval(() => {
+      this.publishMessage()
+    }, 1000)
+  }
+  this.publishMessage = async () => {
+    let waitline = await client.ZCARDAsync('waitline')
+    let inhouse = await client.ZCARDAsync('inhouse')
+    let fields = await client.HKEYSAsync('counts')
+    let counts = []
+    if (fields.length > 0) {
+      counts = await client.HMGETAsync('counts', fields) 
+    }
+    let message = {
+      waitline: waitline,
+      inhouse: inhouse,
+      additional: fields.map((a, b) => { return {[a]: counts[b]}} )
+    }
+    client.PUBLISH('pipe', JSON.stringify(message))
   }
   this.scanAsync = function (cursor, pattern, returnSet) {
     return client.scanAsync(cursor, 'MATCH', pattern, 'COUNT', 10).then((reply) => {
@@ -81,9 +101,11 @@ module.exports = function (seats, lineLimit, throttle) {
       // Save To Redis
       // client.set('wait-' + passport.token, passport.created, 'EX', this.props.throttle);
       await client.ZADDAsync('waitline', passport.created, passport.token)
+      // console.log(token + '產生')
       return passport
     } else {
       // this.props.failedCount = this.props.failedCount + 1
+      client.HINCRBYAsync('counts', 'rejected', 1)
       throw Error('wait line is full. current waiting: ' + this.props.line.length)
     }
   }
@@ -94,13 +116,13 @@ module.exports = function (seats, lineLimit, throttle) {
     let isInhouse = await client.ZRANKAsync('inhouse', passport.token)
     let isInline = await client.ZRANKAsync('waitline', passport.token)
     if (isInhouse !== null) {
-      console.log(isInhouse)
-      console.log(passport.token + '在店內')
+      // console.log(isInhouse)
+      // console.log(passport.token + '在店內')
       status = true
     }
     if (isInline !== null) {
       // 再 set 一次，更新 token
-      console.log('排隊第' + isInline + '號')
+      // console.log(passport.token + ' 排隊第' + isInline + '號')
       let updateTime = new Date().getTime()
       await client.ZADDAsync('waitline', updateTime, passport.token)
       status = false
@@ -108,19 +130,13 @@ module.exports = function (seats, lineLimit, throttle) {
     return status
   }
   this.checkOut = async (passport) => {
-    console.log('checkout')
-    // let randomUserIndex = Math.floor(Math.random() * this.props.seats)
-    // console.log(randomUserIndex + ' 號結帳')
-    // this.props.checkOutLine.push(token)
     let randomCheckOutWait = Math.floor(Math.random() * 1000)
     await setTimeout(() => {
       client.ZREMAsync('inhouse', passport.token).then(() => {
-        console.log(passport.token + '出店')
+        client.HINCRBYAsync('counts', 'succeed', 1).then((res) => {
+          console.log(res)
+        })
       })
-      // this.props.checkOutLine.splice(this.props.checkOutLine.indexOf(token), 1)
-      // this.props.inhouse.splice(this.props.inhouse.indexOf(token), 1)
-      // this.props.succeedCount = this.props.succeedCount + 1
-      // 出店
     }, randomCheckOutWait)
   }
   this.sync = async (users) => {
@@ -128,17 +144,17 @@ module.exports = function (seats, lineLimit, throttle) {
       let inhouseTime = new Date().getTime()
       await client.ZREMAsync('waitline', user)
       await client.ZADDAsync('inhouse', inhouseTime, user)
-      console.log(user + '進店')
+      // console.log(user + '進店')
     }
   }
   this.worker = async () => {
     // 檢查店內人數，如果店內產生空位，從隊列中的第一個補進來
     try {
       await this.checkAvailability().then((available) => {
-        console.log(available + '個空位')
+        // console.log(available + '個空位')
         if (available > 0) {
           this.getNext(available).then((users) => {
-            console.log(users)
+            // console.log(users)
             this.sync(users).then(() => {
               setTimeout(() => {
                 this.worker()
@@ -156,7 +172,4 @@ module.exports = function (seats, lineLimit, throttle) {
     }
   }
   this.worker()
-  // setInterval(() => {
-  //   this.worker()
-  // }, 1000)
 }
