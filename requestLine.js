@@ -1,4 +1,17 @@
 const uuidv4 = require('uuid/v4');
+const redis = require("redis")
+const bluebird = require('bluebird')
+bluebird.promisifyAll(redis);
+const client = redis.createClient();
+// const { promisify } = require('util');
+// const { uniq } = require('lodash');
+// const getAsync = promisify(client.get).bind(client);
+// 非同步取回內容範例
+// const res = await getAsync(passport.token)
+// console.log(res)
+client.on("error", function (err) {
+  console.log("Error " + err);
+});
 module.exports = function (seats, lineLimit, throttle) {
   this.props = new Proxy({
     machineNo: 0, //發卡機
@@ -26,67 +39,124 @@ module.exports = function (seats, lineLimit, throttle) {
         return undefined;
       }
     })
-  this.init = () => {}
+  this.init = () => {
+    // client.ZREMRANGEBYLEXAsync('waitline') key min max 
+  }
+  this.scanAsync = function (cursor, pattern, returnSet) {
+    return client.scanAsync(cursor, 'MATCH', pattern, 'COUNT', 10).then((reply) => {
+      cursor = reply[0];
+      var keys = reply[1];
+      keys.forEach(function (key, i) {
+        returnSet.add(key);
+      })
+      if (cursor === '0') {
+        return Array.from(returnSet);
+      } else {
+        return this.scanAsync(cursor, pattern, returnSet)
+      }
+    })
+  }
+  this.checkAvailability = async () => {
+    let isAvailable = await client.ZCARDAsync('inhouse').then((res) => {
+      return res < this.props.seats ? this.props.seats - res : 0
+    })
+    return isAvailable
+  }
+  this.getNext = async (available) => {
+    let isAvailable = await client.ZRANGEAsync('waitline', '0', available - 1).then((res) => {
+      return res
+    })
+    return isAvailable
+  }
   this.getToken = async () => {
     // 如果還能排隊的話 發一張卡
-    if (this.props.line.length <= this.props.lineLimit) {
+    let lineLenghth = await client.ZCARDAsync('waitline')
+    if (lineLenghth <= this.props.lineLimit) {
       let token = uuidv4()
       let passport = {
         token: token,
-        lastSeen: new Date().getTime()
+        created: new Date().getTime()
       }
-      this.props.line.push(passport)
-      return await passport
+      // this.props.line.push(passport)
+      // Save To Redis
+      // client.set('wait-' + passport.token, passport.created, 'EX', this.props.throttle);
+      await client.ZADDAsync('waitline', passport.created, passport.token)
+      return passport
     } else {
-      this.props.failedCount = this.props.failedCount + 1
+      // this.props.failedCount = this.props.failedCount + 1
       throw Error('wait line is full. current waiting: ' + this.props.line.length)
     }
   }
-  this.checkStatus = async (token) => {
-    //已經在店內，可以結帳
+  this.checkStatus = async (passport) => {
+    // client.set('wait-' + passport.token, passport.created, 'EX', this.props.throttle)
+    // 已經在店內，可以結帳
     let status = false
-    if (this.props.inhouse.indexOf(token) > -1) {
+    let isInhouse = await client.ZRANKAsync('inhouse', passport.token)
+    let isInline = await client.ZRANKAsync('waitline', passport.token)
+    if (isInhouse !== null) {
+      console.log(isInhouse)
+      console.log(passport.token + '在店內')
       status = true
     }
-    if (this.props.line.indexOf(token) > -1) {
-      // 回傳順位，而不是號碼
+    if (isInline !== null) {
+      // 再 set 一次，更新 token
+      console.log('排隊第' + isInline + '號')
+      let updateTime = new Date().getTime()
+      await client.ZADDAsync('waitline', updateTime, passport.token)
       status = false
     }
-    return await status
+    return status
   }
-  this.checkOut = async (token) => {
+  this.checkOut = async (passport) => {
+    console.log('checkout')
     // let randomUserIndex = Math.floor(Math.random() * this.props.seats)
     // console.log(randomUserIndex + ' 號結帳')
-    this.props.checkOutLine.push(token)
+    // this.props.checkOutLine.push(token)
     let randomCheckOutWait = Math.floor(Math.random() * 1000)
     await setTimeout(() => {
-      this.props.checkOutLine.splice(this.props.checkOutLine.indexOf(token), 1)
-      this.props.inhouse.splice(this.props.inhouse.indexOf(token), 1)
-      this.props.succeedCount = this.props.succeedCount + 1
+      client.ZREMAsync('inhouse', passport.token).then(() => {
+        console.log(passport.token + '出店')
+      })
+      // this.props.checkOutLine.splice(this.props.checkOutLine.indexOf(token), 1)
+      // this.props.inhouse.splice(this.props.inhouse.indexOf(token), 1)
+      // this.props.succeedCount = this.props.succeedCount + 1
+      // 出店
     }, randomCheckOutWait)
   }
-  // this.cashier = async () => {
-  //   let randomUserIndex = Math.floor(Math.random() * this.props.seats)
-  //   console.log(randomUserIndex + ' 號結帳')
-  //   await this.props.inhouse.splice(randomUserIndex, 1)
-  // }
-  // let randomCheckOut = Math.floor(Math.random() * 1000)
-  // setInterval(() => {
-  //   this.cashier()
-  // }, randomCheckOut)
+  this.sync = async (users) => {
+    for (let user of users) {
+      let inhouseTime = new Date().getTime()
+      await client.ZREMAsync('waitline', user)
+      await client.ZADDAsync('inhouse', inhouseTime, user)
+      console.log(user + '進店')
+    }
+  }
   this.worker = async () => {
     // 檢查店內人數，如果店內產生空位，從隊列中的第一個補進來
-    if (this.props.inhouse.length < this.props.seats) {
-      let needCustomer = this.props.seats - this.props.inhouse.length
-      let customers = this.props.line.splice(0, needCustomer)
-      for (let customer of customers) {
-        this.props.inhouse.push(customer)
-      }
+    try {
+      await this.checkAvailability().then((available) => {
+        console.log(available + '個空位')
+        if (available > 0) {
+          this.getNext(available).then((users) => {
+            console.log(users)
+            this.sync(users).then(() => {
+              setTimeout(() => {
+                this.worker()
+              }, 1000);
+            })
+          })
+        } else {
+          setTimeout(() => {
+            this.worker()
+          }, 1000);
+        }
+      })
+    } catch(err) {
+      console.log(err)
     }
-    // console.log('排隊中： ' + this.props.line.length)
-    // console.log('處理中： ' + this.props.inhouse.length)
   }
-  setInterval(() => {
-    this.worker()
-  }, 1000)
+  this.worker()
+  // setInterval(() => {
+  //   this.worker()
+  // }, 1000)
 }

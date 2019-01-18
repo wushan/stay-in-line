@@ -1,5 +1,5 @@
 {
-  "name": "micro-api",
+  "name": "stay-in-line",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -15,9 +15,11 @@
     "micro-dev": "^3.0.0"
   },
   "dependencies": {
+    "bluebird": "^3.5.3",
     "csv-write-stream": "^2.0.0",
     "faker": "^4.1.0",
     "micro-ratelimit": "^0.4.0",
+    "redis": "^2.8.0",
     "uuid": "^3.3.2"
   }
 }
