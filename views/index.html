@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Chatroom</title>
+  <title>test</title>
   <script src="/socket.io/socket.io.js"></script>
   <script>
     var socket = io();
@@ -16,15 +16,24 @@
   <button onclick="startJob()">START JOB</button>
   <script>
     function startJob() {
-      socket.emit("startJob");
+      socket.emit("startJob", {
+        simulateType: 'wait',
+        simulateAmount: 100,
+        parallel: 2,
+        timeGap: 1,
+        capacity: 100, // 容量
+        waitLineLimit: 100, // 排隊量
+        throttle: 1 // 放棄率
+      });
     }
     // 當觸發連線建立事件
     // 發送 greet 事件給伺服器
     socket.on("connect", function () {
-      console.log('socket connected.')
+      console.log('Socket client connected.')
     });
-    // 當收到伺服器回傳到 greet 事件
-    // 將內容轉到 div 中呈現
+    socket.on('redisConnected', (msg) => {
+      console.log('Redis Subscribed: ' + JSON.stringify(msg))
+    })
     socket.on("pipeEvent", function (msg) {
       document.getElementById("msg").innerText = msg;
     });
